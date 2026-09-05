@@ -357,6 +357,7 @@ class Ops:
         self.MMU.wb(0xFF00 + self.CPU.C, self.CPU.A)
         self.CPU.M = 2
 
+    #DEBUG - all flag fixes might be broken.
     '''
     def LDHLSPn(self): 
         i = self.MMU.rb(self.CPU.PC)
@@ -365,7 +366,8 @@ class Ops:
         i += self.CPU.SP
         self.CPU.H = (i >> 8) & 0xFF
         self.CPU.L = i & 0xFF
-        self.CPU.M = 3'''
+        self.CPU.M = 3
+    '''
     #fix missing flags
     def LDHLSPn(self):
         i = self.MMU.rb(self.CPU.PC)
@@ -404,43 +406,44 @@ class Ops:
         tr = self.CPU.B
         self.CPU.B = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.B else 0x80
-        self.CPU.M = 1
+        #self.CPU.M = 1
+        self.CPU.M = 2      #DEBUG: changed all SWAPs to 2 M cycles
 
     def SWAPr_c(self): 
         tr = self.CPU.C
         self.CPU.C = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.C else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def SWAPr_d(self): 
         tr = self.CPU.D
         self.CPU.D = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.D else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def SWAPr_e(self): 
         tr = self.CPU.E
         self.CPU.E = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.E else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def SWAPr_h(self): 
         tr = self.CPU.H
         self.CPU.H = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.H else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def SWAPr_l(self): 
         tr = self.CPU.L
         self.CPU.L = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.L else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def SWAPr_a(self): 
         tr = self.CPU.A
         self.CPU.A = ((tr & 0xF) << 4) | ((tr & 0xF0) >> 4)
         self.CPU.F = 0 if self.CPU.A else 0x80
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     # --- ADD operations (A + r) ---
 
@@ -529,6 +532,7 @@ class Ops:
         if (self.CPU.A ^ a ^ m) & 0x10: self.CPU.F |= 0x20
         self.CPU.M = 2
 
+    #DEBUG: changing M from 3 cycles to 2
     def ADDHLBC(self):
         hl = (self.CPU.H << 8) + self.CPU.L
         bc = (self.CPU.B << 8) + self.CPU.C
@@ -542,7 +546,7 @@ class Ops:
             self.CPU.F |= 0x10
         self.CPU.H = (result >> 8) & 0xFF
         self.CPU.L = result & 0xFF
-        self.CPU.M = 3
+        self.CPU.M = 2
 
     def ADDHLDE(self):
         hl = (self.CPU.H << 8) + self.CPU.L
@@ -557,7 +561,7 @@ class Ops:
             self.CPU.F |= 0x10
         self.CPU.H = (result >> 8) & 0xFF
         self.CPU.L = result & 0xFF
-        self.CPU.M = 3
+        self.CPU.M = 2
 
     def ADDHLHL(self):
         hl = (self.CPU.H << 8) + self.CPU.L
@@ -571,7 +575,7 @@ class Ops:
             self.CPU.F |= 0x10
         self.CPU.H = (result >> 8) & 0xFF
         self.CPU.L = result & 0xFF
-        self.CPU.M = 3
+        self.CPU.M = 2
 
     def ADDHLSP(self):
         hl = (self.CPU.H << 8) + self.CPU.L
@@ -586,7 +590,7 @@ class Ops:
             self.CPU.F |= 0x10
         self.CPU.H = (result >> 8) & 0xFF
         self.CPU.L = result & 0xFF
-        self.CPU.M = 3
+        self.CPU.M = 2
 
     '''def ADDSPn(self):             #Faulty; doesn't factor in flags
         i = self.MMU.rb(self.CPU.PC)
@@ -1532,46 +1536,46 @@ class Ops:
         self.CPU.C = (self.CPU.C + 1) & 0xFF
         if self.CPU.C == 0:
             self.CPU.B = (self.CPU.B + 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def INCDE(self):
         self.CPU.E = (self.CPU.E + 1) & 0xFF
         if self.CPU.E == 0:
             self.CPU.D = (self.CPU.D + 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def INCHL(self):
         self.CPU.L = (self.CPU.L + 1) & 0xFF
         if self.CPU.L == 0:
             self.CPU.H = (self.CPU.H + 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def INCSP(self):
         self.CPU.SP = (self.CPU.SP + 1) & 0xFFFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
 
     def DECBC(self):
         self.CPU.C = (self.CPU.C - 1) & 0xFF
         if self.CPU.C == 0xFF:
             self.CPU.B = (self.CPU.B - 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def DECDE(self):
         self.CPU.E = (self.CPU.E - 1) & 0xFF
         if self.CPU.E == 0xFF:
             self.CPU.D = (self.CPU.D - 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def DECHL(self):
         self.CPU.L = (self.CPU.L - 1) & 0xFF
         if self.CPU.L == 0xFF:
             self.CPU.H = (self.CPU.H - 1) & 0xFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def DECSP(self):
         self.CPU.SP = (self.CPU.SP - 1) & 0xFFFF
-        self.CPU.M = 1
+        self.CPU.M = 2
 
     def BIT0b(self):
         self.CPU.F &= 0x1F          # Clear upper flag bits except carry & half-carry etc.
@@ -3314,6 +3318,8 @@ class Ops:
         HIGH = self.MMU.rb(self.CPU.SP)
         self.CPU.SP = (self.CPU.SP + 1) & 0xFFFF
 
+        self.CPU.M = 3  #DEBUG CHECK THIS
+
         return HIGH, LOW
     # ----------------------------
     # PUSH variants
@@ -3356,7 +3362,7 @@ class Ops:
 
     def JPnn(self):
         self.CPU.PC = self.MMU.rw(self.CPU.PC)
-        self.CPU.M = 3
+        self.CPU.M = 4      #DEBUG: change from 3 to 4 cycles
 
     def JPHL(self):
         self.CPU.PC = (self.CPU.H << 8) + self.CPU.L
@@ -3451,6 +3457,7 @@ class Ops:
     # Decrement & Jump
     # ----------------------------
 
+    #This Function probably shouldnt exist. On GB, 0x10 is STOP
     def DJNZn(self):
         offset = self.MMU.rb(self.CPU.PC)
         if offset > 127:
@@ -3486,22 +3493,18 @@ class Ops:
         self.CPU.M = 6
 
 
+    #DEBUG: returned non-taken path to +2 from incorrect +3
     def CALLNZnn(self):
 
         self.CPU.M = 3
-
+        
         if (self.CPU.F & 0x80) == 0x00:
-
             self.CPU.SP = (self.CPU.SP - 2) & 0xFFFF
-
             self.MMU.ww(self.CPU.SP, (self.CPU.PC + 2) & 0xFFFF)
-
             self.CPU.PC = self.MMU.rw(self.CPU.PC)
-
             self.CPU.M += 3
 
         else:
-
             self.CPU.PC += 2
 
 
@@ -3511,17 +3514,12 @@ class Ops:
         self.CPU.M = 3
 
         if (self.CPU.F & 0x80) == 0x80:
-
             self.CPU.SP = (self.CPU.SP - 2) & 0xFFFF
-
             self.MMU.ww(self.CPU.SP, (self.CPU.PC + 2) & 0xFFFF)
-
             self.CPU.PC = self.MMU.rw(self.CPU.PC)
-
             self.CPU.M += 3
 
         else:
-
             self.CPU.PC += 2
 
 
@@ -3529,19 +3527,14 @@ class Ops:
     def CALLNCnn(self):
 
         self.CPU.M = 3
-
+        
         if (self.CPU.F & 0x10) == 0x00:
-
             self.CPU.SP = (self.CPU.SP - 2) & 0xFFFF
-
             self.MMU.ww(self.CPU.SP, (self.CPU.PC + 2) & 0xFFFF)
-
             self.CPU.PC = self.MMU.rw(self.CPU.PC)
-
             self.CPU.M += 3
 
         else:
-
             self.CPU.PC += 2
 
 
@@ -3551,17 +3544,12 @@ class Ops:
         self.CPU.M = 3
 
         if (self.CPU.F & 0x10) == 0x10:
-
             self.CPU.SP = (self.CPU.SP - 2) & 0xFFFF
-
             self.MMU.ww(self.CPU.SP, (self.CPU.PC + 2) & 0xFFFF)
-
             self.CPU.PC = self.MMU.rw(self.CPU.PC)
-
             self.CPU.M += 3
 
         else:
-
             self.CPU.PC += 2
 
 
@@ -3575,17 +3563,9 @@ class Ops:
 
 
     def RET(self):
-
-        '''self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
-        self.CPU.SP += 2
-
-        self.CPU.M = 3'''
-
+        
         self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
         self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
         self.CPU.M = 4
 
 
@@ -3593,73 +3573,57 @@ class Ops:
     def RETI(self):
 
         self.CPU.T = 1        # renamed from IME
-
         self.CPU.rSave()        # call the rrs function
-
         self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
         self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
-        self.CPU.M = 3
-
+        self.CPU.M = 4          #debug: 3 to 4
 
 
+    #DEBUG: changed from 1;3 to 2;5
     def RETNZ(self):
 
-        self.CPU.M = 1
+        self.CPU.M = 2
 
         if (self.CPU.F & 0x80) == 0x00:
-
             self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
             self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
-            self.CPU.M += 2
+            self.CPU.M += 3
 
 
 
     def RETZ(self):
 
-        self.CPU.M = 1
+        self.CPU.M = 2
 
         if (self.CPU.F & 0x80) == 0x80:
-
             self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
             self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
-            self.CPU.M += 2
+            self.CPU.M += 3
 
 
 
     def RETNC(self):
 
-        self.CPU.M = 1
+        self.CPU.M = 2
 
         if (self.CPU.F & 0x10) == 0x00:
-
             self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
             self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
-            self.CPU.M += 2
+            self.CPU.M += 3
 
 
 
     def RETC(self):
 
-        self.CPU.M = 1
+        self.CPU.M = 2
 
         if (self.CPU.F & 0x10) == 0x10:
-
             self.CPU.PC = self.MMU.rw(self.CPU.SP)
-
             self.CPU.SP = (self.CPU.SP + 2) & 0xFFFF
-
-            self.CPU.M += 2
-
+            self.CPU.M += 3
 
 
+    #DEBUG - timings. change 3 M cycles to 4
     def RST00(self):
 
         self.CPU.rSave()
@@ -3670,7 +3634,7 @@ class Ops:
 
         self.CPU.PC = 0x00
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3684,7 +3648,7 @@ class Ops:
 
         self.CPU.PC = 0x08
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3698,7 +3662,7 @@ class Ops:
 
         self.CPU.PC = 0x10
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3712,7 +3676,7 @@ class Ops:
 
         self.CPU.PC = 0x18
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3726,7 +3690,7 @@ class Ops:
 
         self.CPU.PC = 0x20
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3740,7 +3704,7 @@ class Ops:
 
         self.CPU.PC = 0x28
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3754,7 +3718,7 @@ class Ops:
 
         self.CPU.PC = 0x30
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
 
@@ -3768,10 +3732,10 @@ class Ops:
 
         self.CPU.PC = 0x38
 
-        self.CPU.M = 3
+        self.CPU.M = 4
 
 
-
+    #DEBUG: 5 M-cycles, not 3 nor 4
     def RST40(self):
 
         self.CPU.rSave()
@@ -3782,7 +3746,7 @@ class Ops:
 
         self.CPU.PC = 0x40
 
-        self.CPU.M = 3
+        self.CPU.M = 5
 
 
 
@@ -3796,7 +3760,7 @@ class Ops:
 
         self.CPU.PC = 0x48
 
-        self.CPU.M = 3
+        self.CPU.M = 5
 
 
 
@@ -3810,7 +3774,7 @@ class Ops:
 
         self.CPU.PC = 0x50
 
-        self.CPU.M = 3
+        self.CPU.M = 5
 
 
 
@@ -3824,7 +3788,7 @@ class Ops:
 
         self.CPU.PC = 0x58
 
-        self.CPU.M = 3
+        self.CPU.M = 5
 
 
 
@@ -3838,7 +3802,7 @@ class Ops:
 
         self.CPU.PC = 0x60
 
-        self.CPU.M = 3
+        self.CPU.M = 5
 
 
 

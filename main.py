@@ -105,108 +105,62 @@ mmu.load("instr_timing.gb")
 def frame():
 
     fclock = CPU._clock + 17556
-
     #brk = document.getElementById('breakpoint').value  # Keep as string, parse later
-
     #t0 = datetime.datetime.now()
 
-    
-
     while CPU._clock < fclock:
-
         if CPU._halt:
-
             CPU.M = 1
-
             CPU._clock += CPU.M
-
             #if any interupt becomes nonzero, wake the CPU up from HALT
             if mmu._ie & mmu._if:
                 CPU._halt = 0
-
         else:
-
             # Execute instruction at PC (proper fetch/increment/execute order).
-
             # exec() already adds its own M-cost to CPU._clock internally.
-
             CPU.exec()
 
-        
-
         # Handle interrupts
-
         if CPU.T and (mmu._ie & mmu._if):
-
             CPU._halt = 0
-
             CPU.T = 0
-
             ifired = mmu._ie & mmu._if
 
-            
-
             if ifired & 1:
-
                 mmu._if &= 0xFE
-
                 CPU._ops.RST40()
-
                 CPU._clock += CPU.M
-
+                
             elif ifired & 2:
-
                 mmu._if &= 0xFD
-
                 CPU._ops.RST48()
-
                 CPU._clock += CPU.M
 
             elif ifired & 4:
-
                 mmu._if &= 0xFB
-
                 CPU._ops.RST50()
-
                 CPU._clock += CPU.M
 
             elif ifired & 8:
-
                 mmu._if &= 0xF7
-
                 CPU._ops.RST58()
-
                 CPU._clock += CPU.M
 
             elif ifired & 16:
-
                 mmu._if &= 0xEF
-
                 CPU._ops.RST60()
-
                 CPU._clock += CPU.M
 
             else:
-
                 CPU.T = 1
 
-        
-
         # Update GPU and timers
-
         gpu.checkline()
-
         timer.inc()
 
-        
-
         # Breakpoint or stop
-
         if CPU._stop:
-
-            break
-
-    
+            break 
 
     #t1 = datetime.datetime.now()
 
