@@ -97,6 +97,9 @@ class GPU:
         self._bgmapbase = 0x1800
         self._wintilebase = 0x1800
 
+        #Cache
+        #self._tile_cache = {}
+
         self.reset()
 
     # ------------------------------------------------------------------
@@ -144,6 +147,8 @@ class GPU:
         self._linemode = 2
         self._modeclocks = 0
 
+        #self._tile_cache = {}
+        
         print("GPU Reset")
         self._scrn = [0] * (WIDTH * HEIGHT * 4)
 
@@ -532,16 +537,20 @@ class GPU:
         #   ...
         #   0xFF -> tile -1   -> VRAM 0x0FF0
 
-        if self._bgtilebase == 0x0800:
+        '''if self._bgtilebase == 0x0800:
             # Convert unsigned byte to signed 8-bit value.
             if tile_number >= 128:
                 tile_number -= 256
 
             # Signed tile numbering is centred on VRAM offset 0x1000.
+            cache_key = tile_number + 256
             base = 0x1000 + tile_number * 16
         else:
+            cache_key = tile_number
             base = tile_number * 16
 
+        if cache_key in self._tile_cache:
+            return self._tile_cache[cache_key]
         tile = []
 
         for y in range(8):
@@ -562,7 +571,11 @@ class GPU:
 
             tile.append(row)
 
-        return tile
+        self._tile_cache[cache_key] = tile
+        return tile'''
+        if self._bgtilebase == 0x0800 and tile_number<128:
+            tile_number+=128
+        return self._tilemap[tile_number]
 
 
     # ------------------------------------------------------------------

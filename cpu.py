@@ -41,6 +41,8 @@ class CPU:
         self._halt = 0
         self._clock= 0          #Specifically, the M clock
         self._clock_t= 0        #the T cycles
+
+        self._halt_bug_pending = False
         
         self._map = []          #populate with opcodes after creation
         self._cbmap = []        #purely to avoid mess
@@ -109,6 +111,7 @@ class CPU:
         self.M = 0
         self._halt = 0
         self._stop = 0
+        self._halt_bug_pending = False
 
         self._clock = 0
         self.T = 1
@@ -121,8 +124,7 @@ class CPU:
 
         # Fetch opcode and execute
         opcode = self.MMU.rb(self.PC)
-        self.PC = (self.PC + 1) & 0xFFFF
-
+        #self.PC = (self.PC + 1) & 0xFFFF
 
         '''if 0x1CE0 <=self.PC<=0x1D10:
             print(
@@ -137,6 +139,11 @@ class CPU:
                 "F:", hex(self.F)
             )
         '''
+
+        if self._halt_bug_pending:
+            self._halt_bug_pending = False #Halt Bug: Do not advance PC after halt
+        else:
+            self.PC = (self.PC + 1) & 0xFFFF
         self._map[opcode]()
 
         # Update clock cycles
@@ -3810,7 +3817,11 @@ class Ops:
         self.CPU.M = 1
 
     def HALT(self):
-        self.CPU._halt = 1
+        #HALT bug: if IME off and interrupt pending, do not halt, instead fail to advance PC
+        if not self.CPU.T and (self.MMU._ie & self.MMU._if & 0x1F):
+            self.CPU._halt_bug_pending = True
+        else:
+            self.CPU._halt = 1
         self.CPU.M = 1
 
     def DI(self):
