@@ -3824,6 +3824,11 @@ class Ops:
             self.CPU._halt = 1
         self.CPU.M = 1
 
+    def STOP(self):
+        self.CPU.PC = (self.CPU.PC +1) & 0xFFFF #STOP consumes 2 bytes
+        self.CPU._stop = 1
+        self.CPU.M = 1
+    
     def DI(self):
         self.CPU.T = 0 
         self.CPU.M = 1
@@ -3872,7 +3877,7 @@ CPU._map = [
   CPU._ops.LDmmSP,	CPU._ops.ADDHLBC,	CPU._ops.LDABCm,	CPU._ops.DECBC,
   CPU._ops.INCr_c,	CPU._ops.DECr_c,	CPU._ops.LDrn_c,	CPU._ops.RRCA,
   # 10
-  CPU._ops.DJNZn,	CPU._ops.LDDEnn,	CPU._ops.LDDEmA,	CPU._ops.INCDE,
+  CPU._ops.STOP,	CPU._ops.LDDEnn,	CPU._ops.LDDEmA,	CPU._ops.INCDE,
   CPU._ops.INCr_d,	CPU._ops.DECr_d,	CPU._ops.LDrn_d,	CPU._ops.RLA,
   CPU._ops.JRn,		CPU._ops.ADDHLDE,	CPU._ops.LDADEm,	CPU._ops.DECDE,
   CPU._ops.INCr_e,	CPU._ops.DECr_e,	CPU._ops.LDrn_e,	CPU._ops.RRA,

@@ -2,6 +2,8 @@
 #Memory Unit for Gameboy.
 
 import time
+import os
+import struct
 
 class MMU:
     def __init__(self):
@@ -84,6 +86,7 @@ class MMU:
         # Cartridge type is the byte at 0x0147
         self._carttype = self._rom[0x0147]
         self._rtc_base_time = time.time()
+        self._rom_path = file_path
         
         print(f"MMU: ROM loaded, {len(self._rom)} bytes.")
         print("Starting Bios...")
@@ -136,7 +139,97 @@ class MMU:
         key = {0x08: "s", 0x09:"m", 0x0A:"h", 0x0B:"dl", 0x0C:"dh"}.get(select)
         if key:
             self._rtc_latched_regs[key] = val
-    
+
+    #Save Persistence - Battery backed RAM and RTC
+
+    def _has_battery(self):
+        return self._carttype in (0x03,0x06,0x09,0x0F,0x10,0x13,0x1B,0x1E)
+
+
+    def _has_rtc(self):
+        return self._carttype in (0x0F, 0x10)   #MBC3+TIMER variants
+
+    def _cart_ram_size(self):
+        if self._check_mbc() == "mbc2":
+            return 512
+        if len(self._rom) <= 0x149:
+            return 0
+        code = self._rom[0x149]
+        sizes = {0x00:0, 0x01: 0x800, 0x02: 0x2000, 0x03: 0x8000,
+                 0x04: 0x20000, 0x05: 0x10000}
+        return sizes.get(code,0)
+
+    def _default_save_path(self):
+        import os
+        base, _ = os.path.splitext(getattr(self, "_rom_path", "rom"))
+        return base + ".sav"
+
+    def save_ram(self, path = None):
+        #Write battery-backed RAM and RTC to disk
+        if not self._has_battery():
+            return False
+
+        path = path or self._default_save_path()
+        size = self._cart_ram_size()
+
+        with open(path, "wb") as f:
+            f.write(b"GBSAVE01")
+            f.write(struct.pack("<I", size))
+            f.write(bytes(self._eram[:size]))
+
+            has_rtc = 1 if self._has_rtc() else 0
+            f.write(struct.pack("<B",has_rtc))
+            if has_rtc:
+                regs = self._rtc_latched_regs
+                f.write(struct.pack(
+                    "<BBBBB",
+                    regs["s"] &0xFF, regs["m"]&0xFF, regs["h"]&0xFF,
+                    regs["dl"]&0xFF, regs["dh"] &0xFF,))
+
+                elapsed = time.time() - (self._rtc_base_time or time.time())
+                f.write(struct.pack("<d", elapsed))
+
+            print(f"MMU: Saved RAM. {size} bytes to {path}")
+            return True
+
+    def load_ram(self, path=None):
+        #Load pre-saved RAM and RTC state.
+
+        if not self._has_battery():
+            return False
+        path = path or self._default_save_path()
+        if not os.path.exists(path):
+            return False
+
+        with open(path, "rb") as f:
+            header = f.read(8)
+            if header!= b"GBSAVE01":
+                print("MMU: Unrecognised save file format.")
+                return False
+
+            size = struct.unpack("<I", f.read(4))[0]
+            #print(size)
+            data = f.read(size)
+        
+            for i in range(min(size, len(self._eram))):
+                self._eram[i] = data[i]
+
+            '''print("Current position:", f.tell())
+            print("File size:", os.fstat(f.fileno()).st_size)
+
+            data = f.read(1)
+            print("Read:", repr(data))'''
+
+            has_rtc = struct.unpack("<B", f.read(1))[0]
+            if has_rtc:
+                s,m,h,dl,dh = struct.unpack("<BBBBB", f.read(5))
+                self._rtc_latched_regs = {"s":s, "m":m, "h":h, "dl":dl, "dh":dh}
+                elapse = struct.unpack("<d", f.read(8))[0]
+                self._rtc_base_time = time.time() - elapsed
+
+            print(f"MMU: Loaded RAM from {path}")
+            return True
+        
     #le big read function
         
     def rb(self,addr):
