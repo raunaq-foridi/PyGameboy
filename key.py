@@ -41,17 +41,17 @@ class KEY:
             self._keys[0] &= 0x7
 
     def keyup(self, keycode):
-        if keycode == K_RIGHT:   # Right
+        if keycode == pygame.K_RIGHT:   # Right
             self._keys[1] |= 0x1
-        elif keycode == K_LEFT: # Left
+        elif keycode == pygame.K_LEFT: # Left
             self._keys[1] |= 0x2
-        elif keycode == K_UP: # Up
+        elif keycode == pygame.K_UP: # Up
             self._keys[1] |= 0x4
-        elif keycode == K_DOWN: # Down
+        elif keycode == pygame.K_DOWN: # Down
             self._keys[1] |= 0x8
-        elif keycode == K_z: # Z
+        elif keycode == pygame.K_z: # Z
             self._keys[0] |= 0x1
-        elif keycode == K_x: # X
+        elif keycode == pygame.K_x: # X
             self._keys[0] |= 0x2
         elif keycode == 32: # Space
             self._keys[0] |= 0x5

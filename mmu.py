@@ -1,6 +1,8 @@
 #Raunaq Foridi 2026
 #Memory Unit for Gameboy.
 
+import time
+
 class MMU:
     def __init__(self):
 
@@ -27,7 +29,13 @@ class MMU:
         self._mbc= [{},{"rombank":0, "rambank":0, "ramon":0, "mode":0}]
         self._romoffs= 0x4000
         self._ramoffs= 0
+        self._ramenabled = False
 
+        #Clock
+        self._rtc_regs = {"s":0, "m":0, "h":0, "dl":0, "dh":0}
+        self._rtc_latched_regs = dict(self._rtc_regs)
+        self._rtc_base_time = None #Set when ROM loads
+        
         '''self._eram= []
         self._wram= []
         self._zram= []'''
@@ -61,6 +69,11 @@ class MMU:
         self._romoffs= 0x4000
         self._ramoffs= 0
 
+        self._ramenabled = False
+        self._rtc_regs = {"s":0, "m":0, "h":0, "dl":0, "dh":0}
+        self._rtc_latched_regs = dict(self._rtc_regs)
+        self._rtc_base_time = None
+        
         print("MMU","Reset.")
 
     def load(self, file_path):
@@ -70,10 +83,60 @@ class MMU:
 
         # Cartridge type is the byte at 0x0147
         self._carttype = self._rom[0x0147]
+        self._rtc_base_time = time.time()
+        
         print(f"MMU: ROM loaded, {len(self._rom)} bytes.")
         print("Starting Bios...")
 
 
+    # MBC Support
+
+    def _check_mbc(self):
+        t = self._carttype
+        if t in (0x00, 0x08, 0x09):
+            return "none"
+        if t in (0x01, 0x02, 0x03):
+            return "mbc1"
+        if t in (0x05, 0x06):
+            return "mbc2"
+        if t in (0x0F, 0x10, 0x11, 0x12, 0x13):
+            return "mbc3"
+        if t in (0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E):
+            return "mbc5"
+        return "none"
+
+    def _mbc1_bank(self):
+        #MBC1 bumps up 0x00, 0x20, 0x40 and 0x60 by 1
+
+        bank = self._mbc[1]["rombank"]
+        if bank in (0x00,0x20,0x40,0x60):
+            bank+=1
+        return bank
+
+    def _rtc_latch(self):
+        #take in the live time to the latched registers
+
+        elapsed = int(time.time() - (self._rtc_base_time or time.time() ))
+        days,rem = divmod(elapsed,86400)
+        h, rem = divmod(rem, 3600)
+        m, s = divmod(rem,60)
+
+        #DEBUG: later add halt/carry flags
+        self._rtc_latched_regs = {
+            "s": s, "m": m, "h": h, "dl": (days & 0xFF), "dh": (days>>8)&1
+            }
+
+    def _rtc_read(self):
+        select = self._mb[1].get("rtc_select")
+        key = {0x08: "s", 0x09:"m", 0x0A:"h", 0x0B:"dl", 0x0C:"dh"}.get(select)
+        return self._rtc_latched_regs.get(key, 0xFF) if key else 0xFF
+
+    def _rtc_write(self, val):
+        select = self._mb[1].get("rtc_select")
+        key = {0x08: "s", 0x09:"m", 0x0A:"h", 0x0B:"dl", 0x0C:"dh"}.get(select)
+        if key:
+            self._rtc_latched_regs[key] = val
+    
     #le big read function
         
     def rb(self,addr):
@@ -84,9 +147,10 @@ class MMU:
                 #print("Doing a Bios instruction: ")
                 if addr < 0x0100:
                     return self._bios[addr]
-                elif self.CPU.PC == 0x0100:
-                    self._inbios = 0
-                    print('MMU', 'Leaving BIOS.')
+                else:
+                    if self.CPU.PC == 0x0100:
+                        self._inbios = 0
+                        print('MMU', 'Leaving BIOS.')
                     return self._rom[addr]
             else:
                 return self._rom[addr]
@@ -102,9 +166,16 @@ class MMU:
         elif (addr & 0xF000) in (0x8000, 0x9000):
             return self.GPU._vram[addr & 0x1FFF]
 
-        # External RAM
+        # External RAM and MBC3 RTC registers
         elif (addr & 0xF000) in (0xA000, 0xB000):
+            ctype = self._check_mbc()
+            if ctype == "mbc3" and self._mbc[1].get("rtc_select") is not None:
+                return self._rtc_read()
+            if ctype != "none" and not self._ramenabled:
+                return 0xFF
+            
             return self._eram[self._ramoffs + (addr & 0x1FFF)]
+
 
         # Work RAM and echo
         elif (addr & 0xF000) in (0xC000, 0xD000, 0xE000):
@@ -180,36 +251,86 @@ class MMU:
         
         high = addr & 0xF000
 
+        ctype = self._check_mbc()
+        
         # ROM bank 0 / MBC1: Enable external RAM
         if high in (0x0000, 0x1000):
-            if self._carttype == 1:
-                self._mbc[1]["ramon"] = 1 if (val & 0xF) == 0xA else 0
+            if ctype == "mbc2":
+                #MBC2 uses bit 8 to distinguish RAM enable from ROM bank select
+                if (addr & 0x0100) == 0:
+                    self._ramenabled = True if (val & 0xF) == 0xA else 0
 
-        # MBC1: ROM bank switch
+            elif ctype in ("mbc1", "mbc3", "mbc5"):
+                self._ramenabled = True if (val & 0xF) == 0xA else 0
+                #self._mbc[1]["ramon"] = 1 if (val & 0xF) == 0xA else 0
+
+        # ROM bank select
         elif high in (0x2000, 0x3000):
-            if self._carttype == 1:
+            #MBC1
+            if ctype == "mbc1":
                 self._mbc[1]["rombank"] &= 0x60
                 val &= 0x1F
                 if val == 0:
                     val = 1
                 self._mbc[1]["rombank"] |= val
+                #self._romoffs = self._mbc[1]["rombank"] * 0x4000
+                self._romoffs = self._mbc1_bank() * 0x4000 #account for mbc funkiness
+            #MBC2
+            elif ctype == "mbc2":
+                if (addr & 0x0100) != 0:
+                    val &= 0x0F
+                    if val == 0:
+                        val = 1
+                    self._mbc[1]["rombank"] = val
+                    self._romoffs = val * 0x4000
+            #MBC3
+            elif ctype == "mbc3":
+                #Just uses all 7 bits directly
+                val &= 0x7F
+                if val == 0:
+                    val = 1
+                self._mbc[1]["rombank"] = val
+                self._romoffs = val*0x4000
+            #MBC5
+            elif ctype == "mbc5":
+                if high == 0x200:
+                    # use the low 8 bits of the 9 bit rombank number
+                    self._mbc[1]["rombank"] = (self._mbc[1]["rombank"] & 0x100)
+                else:
+                    # high bit
+                    self._mbc[1]["rombank"] = (self._mbc[1]["rombank"] & 0xFF) | ((val & 1)<<8)
                 self._romoffs = self._mbc[1]["rombank"] * 0x4000
 
-        # MBC1: RAM bank switch or extended ROM bank
+        # RAM bank switch / MBC1 extended ROM bank / MBC3 RTC reg select
         elif high in (0x4000, 0x5000):
-            if self._carttype == 1:
+            if ctype == "mbc1":
                 if self._mbc[1]["mode"]:
                     self._mbc[1]["rambank"] = val & 3
                     self._ramoffs = self._mbc[1]["rambank"] * 0x2000
                 else:
                     self._mbc[1]["rombank"] &= 0x1F
                     self._mbc[1]["rombank"] |= ((val & 3) << 5)
-                    self._romoffs = self._mbc[1]["rombank"] * 0x4000
+                    self._romoffs = self._mbc1_bank() * 0x4000
+            elif ctype == "mbc3":
+                if val<=3:
+                    self._mbc[1]["rtc_select"] = None
+                    self._mbc[1]["rambank"] = val
+                    self._ramoffs = val * 0x2000
+                elif 0x08<= val <= 0x0C:
+                    self._mbc[1]["rtc_select"] = val
 
-        # MBC1: mode select
+            elif ctype == "mbc5":
+                self._mbc[1]["rambank"] = val & 0x0F
+                self._ramoffs = self._mbc[1]["rambank"] * 0x2000
+
+        # MBC1: mode select / MBC3: RTC latch
         elif high in (0x6000, 0x7000):
-            if self._carttype == 1:
+            if ctype == "mbc1":
                 self._mbc[1]["mode"] = val & 1
+            elif ctype == "mbc3":
+                if self._mbc[1].get("_rtc_latch_prev")==0 and val == 1:
+                    self._rtc_latch()
+                self._mbc[1]["_rtc_latch_prev"] = val
 
         # VRAM
         elif high in (0x8000, 0x9000):
@@ -239,9 +360,12 @@ class MMU:
                     "HL:", hex((self.CPU.H << 8) | self.CPU.L)
                 )'''
 
-        # External RAM
+        # External RAM / MBC3 RTC registers
         elif high in (0xA000, 0xB000):
-            self._eram[self._ramoffs + (addr & 0x1FFF)] = val
+            if ctype == "mbc3" and self._mbc[1].get("rtc_select") is not None:
+                self._rtc_write(val)
+            elif ctype == "none" or self._ramenabled:
+                self._eram[self._ramoffs + (addr & 0x1FFF)] = val
 
         # Work RAM and echo
         elif high in (0xC000, 0xD000, 0xE000):

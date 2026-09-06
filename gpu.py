@@ -92,6 +92,10 @@ class GPU:
         self._winon = 0
         self._objsize = 0
 
+        self._winx = 0
+        self._winy = 0
+        self._winline = 0
+        
         # VRAM tile addressing
         self._bgtilebase = 0x0000
         self._bgmapbase = 0x1800
@@ -146,6 +150,10 @@ class GPU:
         self._curscan = 0
         self._linemode = 2
         self._modeclocks = 0
+
+        self._winx = 0
+        self._winy = 0
+        self._winline = 0
 
         #self._tile_cache = {}
         
@@ -259,6 +267,7 @@ class GPU:
                     self._curline = 0
                     self._curscan = 0
                     self._linemode = 2
+                    self._winline = 0
 
                 continue
 
@@ -361,6 +370,8 @@ class GPU:
             # LCDC
             return (
                 (0x80 if self._lcdon else 0)
+                | (0x40 if self._wintilebase == 0x1C00 else 0)
+                | (0x20 if self._winon else 0)
                 | (0x10 if self._bgtilebase == 0x0000 else 0)
                 | (0x08 if self._bgmapbase == 0x1C00 else 0)
                 | (0x04 if self._objsize else 0)
@@ -385,6 +396,11 @@ class GPU:
         elif gaddr == 5:
             return self._raster
 
+        elif gaddr == 10:
+            return self._winy
+
+        elif gaddr == 11:
+            return self._winx
         return self._reg[gaddr]
 
     # ------------------------------------------------------------------
@@ -406,6 +422,13 @@ class GPU:
 
             self._lcdon = 1 if (val & 0x80) else 0
 
+            self._wintilebase = (
+                0x1C00 if (val & 0x40)
+                else 0x1800
+            )
+            
+            self._winon = 1 if (val & 0x20) else 0
+            
             self._bgtilebase = (
                 0x0000 if (val & 0x10)
                 else 0x0800
@@ -426,12 +449,14 @@ class GPU:
                 self._curscan = 0
                 self._modeclocks = 0
                 self._linemode = 2
+                self._winline = 0
 
             # LCD was disabled.
             elif was_on and not self._lcdon:
                 self._curline = 0
                 self._curscan = 0
                 self._modeclocks = 0
+                self._winline = 0
 
         # STAT
         elif gaddr == 1:
@@ -488,6 +513,14 @@ class GPU:
                 self._palette['obj1'],
                 val
             )
+            
+        # WY
+        elif gaddr == 10:
+            self._winy = val
+
+        # WX
+        elif gaddr == 11:
+            self._winx = val
 
     # ------------------------------------------------------------------
     # Palette
@@ -574,7 +607,7 @@ class GPU:
         self._tile_cache[cache_key] = tile
         return tile'''
         if self._bgtilebase == 0x0800 and tile_number<128:
-            tile_number+=128
+            tile_number+=256
         return self._tilemap[tile_number]
 
 
@@ -599,11 +632,16 @@ class GPU:
             colour = self._palette['bg'][0]
 
             for x in range(WIDTH):
-                self._put_pixel(
+                '''self._put_pixel(
                     x,
                     screen_y,
                     colour
-                )
+                )'''
+                offset = screen_y*WIDTH*4 + x*4
+                self._scrn[offset] = colour
+                self._scrn[offset+1] = colour
+                self._scrn[offset+2] = colour
+                self._scrn[offset+3] = 255
 
                 self._scanrow[x] = 0
 
@@ -645,14 +683,74 @@ class GPU:
 
             colour = self._palette['bg'][colour_index]
 
-            self._put_pixel(
+            '''self._put_pixel(
                 screen_x,
                 screen_y,
                 colour
-            )
+            )'''
+            offset = screen_y*WIDTH*4 + screen_x*4
+            self._scrn[offset] = colour
+            self._scrn[offset+1] = colour
+            self._scrn[offset+2] = colour
+            self._scrn[offset+3] = 255
 
             self._scanrow[screen_x] = colour_index
 
+    # ------------------------------------------------------------------
+    # Window rendering
+    # ------------------------------------------------------------------
+
+    def _render_window(self):
+        """
+        Render the window for the current scanline
+        Fixed 160x144 overlay, with position controlled by WY/WX, not SCX/SCY
+        """
+
+        if not self._winon:
+            return
+        if not self._bgon:
+            return
+
+        screen_y = self._curline
+
+        #Ignor if too high vertically
+        if screen_y < self._winy:
+            return
+
+        window_x = self._winx - 7
+        win_y = self._winline & 0xFF
+
+        tile_y = win_y >>3
+        pixel_y = win_y & 7
+
+        for screen_x in range(WIDTH):
+
+            window_pixel_x = screen_x - window_x
+            if window_pixel_x<0 or window_pixel_x>256:
+                continue
+
+            tile_x = window_pixel_x >>3
+            pixel_x = window_pixel_x &7
+
+            map_index = (self._wintilebase + tile_y*32 + tile_x)
+
+            tile_number = self._vram[map_index & 0x1FFF]
+            tile = self._get_tile(tile_number)
+
+            colour_index = tile[pixel_y][pixel_x]
+            colour = self._palette["bg"][colour_index]
+
+            offset = screen_y * WIDTH * 4 + screen_x*4
+
+            self._scrn[offset] = colour
+            self._scrn[offset+1] = colour
+            self._scrn[offset+2] = colour
+            self._scrn[offset+3] = 255
+
+            self._scanrow[screen_x] = colour_index
+
+        self._winline+=1
+    
     # ------------------------------------------------------------------
     # Sprite rendering
     # ------------------------------------------------------------------
@@ -702,7 +800,8 @@ class GPU:
                     tile_number += 1
                     line -= 8
 
-            tile = self._get_tile(tile_number)
+            #tile = self._get_tile(tile_number)
+            tile = self._tilemap[tile_number & 0xFF]
 
             palette = (
                 self._palette['obj1']
@@ -804,6 +903,9 @@ class GPU:
         # Background first.
         self._render_background()
 
+        # Windows replace backgrounds. unsure of before/after sprite
+        self._render_window()
+        
         # Sprites are drawn over the background.
         if self._objon:
             self._render_sprites()

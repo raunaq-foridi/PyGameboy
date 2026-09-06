@@ -45,8 +45,8 @@ gpu.reset()  # dummy GPU will just log writes
 gpu.wb(0xFF40, 0x91)
 
 # Load a ROM
-mmu.load("Tetris.gb")
-#mmu.load("pkmn_red.gb")
+#mmu.load("Tetris.gb")
+mmu.load("pkmn_red.gb")
 #mmu.load("cpu_instrs.gb")
 #mmu.load("instr_timing.gb")
 #mmu.load("mem_timing.gb")
