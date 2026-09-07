@@ -34,6 +34,8 @@ gpu.CPU = cpu
 gpu.MMU = mmu
 gpu.TIMER = timer
 gpu.KEY = key
+
+key.MMU = mmu
 # Reset everything
 cpu.reset()
 mmu.reset()
@@ -52,7 +54,7 @@ mmu.load("pkmn_red.gb")
 #mmu.load("mem_timing.gb")
 #mmu.load("halt_bug.gb")
 
-
+mmu.load_ram()
 #Functions
 def frame():
 
@@ -126,6 +128,7 @@ running = True
 CPU.PC=0x100
 print("Reading memory address: ",CPU.PC)
 print("Which should be instruction: ", hex(mmu.rb(CPU.PC)))
+autosave_counter = 0
 import pygame
 while running:
    
@@ -139,7 +142,12 @@ while running:
             key.keydown(event.key)
         elif event.type == pygame.KEYUP:
             key.keyup(event.key)
-    frame()             
+    frame()
+    autosave_counter+=1
+
+    if autosave_counter >= 600:
+        mmu.save_ram()
+        autosave_counter = 0
     '''CPU._map[mmu.rb(CPU.PC)]()
     CPU.PC = (CPU.PC + 1) & 0xFFFF
     CPU._clock += CPU.M'''
@@ -154,4 +162,5 @@ while running:
    
 
 pygame.quit()
+mmu.save_ram()
 

@@ -22,23 +22,43 @@ class KEY:
     def wb(self, v):
         self._colidx = v & 0x30
 
+    def _press(self, group, bit):
+        #Group 0: buttons, Group 1: Dpad
+        mask = 1 << bit
+        was_up = bool(self._keys[group] & mask)
+        self._keys[group] &= (~mask & 0xF)
+
+        #Joypad interrupt
+        if was_up and self.MMU is not None:
+            select_bit = 0x20 if group==0 else 0x10
+            if (self._colidx & select_bit) == 0:
+                self.MMU._if |= 0x10
+                
     def keydown(self, keycode):
         if keycode == pygame.K_RIGHT:   # Right
-            self._keys[1] &= 0xE
+            #self._keys[1] &= 0xE
+            self._press(1,0)
         elif keycode == pygame.K_LEFT: # Left
-            self._keys[1] &= 0xD
+            #self._keys[1] &= 0xD
+            self._press(1,1)
         elif keycode == pygame.K_UP: # Up
-            self._keys[1] &= 0xB
+            #self._keys[1] &= 0xB
+            self._press(1,2)
         elif keycode == pygame.K_DOWN: # Down
-            self._keys[1] &= 0x7
-        elif keycode == pygame.K_z: # Z
-            self._keys[0] &= 0xE
-        elif keycode == pygame.K_x: # X
-            self._keys[0] &= 0xD
-        elif keycode == 32: # Space
-            self._keys[0] &= 0xB
-        elif keycode == 13: # Enter
-            self._keys[0] &= 0x7
+            #self._keys[1] &= 0x7
+            self._press(1,3)
+        elif keycode == pygame.K_z: # Z  (A)
+            #self._keys[0] &= 0xE
+            self._press(0,0)
+        elif keycode == pygame.K_x: # X  (B)
+            #self._keys[0] &= 0xD
+            self._press(0,1)
+        elif keycode == 32: # Space      (Select)
+            #self._keys[0] &= 0xB
+            self._press(0,2)
+        elif keycode == 13: # Enter      (Start)
+            #self._keys[0] &= 0x7
+            self._press(0,3)
 
     def keyup(self, keycode):
         if keycode == pygame.K_RIGHT:   # Right
@@ -54,6 +74,6 @@ class KEY:
         elif keycode == pygame.K_x: # X
             self._keys[0] |= 0x2
         elif keycode == 32: # Space
-            self._keys[0] |= 0x5
+            self._keys[0] |= 0x4
         elif keycode == 13: # Enter
             self._keys[0] |= 0x8
