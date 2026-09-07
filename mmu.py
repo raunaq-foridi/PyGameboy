@@ -289,7 +289,7 @@ class MMU:
             elif sub == 0xE00:
                 return self.GPU._oam[addr & 0xFF] if (addr & 0xFF) < 0xA0 else 0
 
-            # Zeropage RAM, I/O, interrupts
+            # Zeropage RAM, I/O, interrupts (and Audio?)
             elif sub == 0xF00:
                 if addr == 0xFFFF:
                     return self._ie
@@ -312,6 +312,9 @@ class MMU:
                         else:
                             return 0
                     elif top_nibble in (0x10, 0x20, 0x30):
+                        #Audio - for now, only channel 2
+                        if 0x16<=(addr&0xFF)<=0x26:
+                            return self.APU.rb(addr)
                         return 0
                     elif top_nibble in (0x40, 0x50, 0x60, 0x70):
                         return self.GPU.rb(addr)
@@ -509,7 +512,10 @@ class MMU:
                         elif low == 15:
                             self._if = val
                     elif hi_nibble in (0x10, 0x20, 0x30):
-                        pass
+                        #Audio regs DEBUG
+                        if 0x16<=(addr&0xFF)<=0x26:
+                            self.APU.wb(addr, val)
+                        #pass
                     elif hi_nibble in (0x40, 0x50, 0x60, 0x70):
                         self.GPU.wb(addr, val)
 

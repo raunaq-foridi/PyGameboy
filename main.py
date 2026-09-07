@@ -5,6 +5,8 @@ from timer import TIMER
 from gpu import DummyGPU
 import gpu
 from gpu import GPU
+from apu import APU
+from apu import AudioOutput
 
 # Initialize components
 cpu = CPU
@@ -13,6 +15,8 @@ mmu = MMU()
 gpu = GPU()
 key = KEY()
 timer = TIMER()
+apu = APU()
+audio= AudioOutput()
 
 # Link components if needed
 cpu._ops.CPU = cpu
@@ -26,6 +30,7 @@ mmu.CPU = cpu
 mmu.GPU = gpu
 mmu.KEY = key
 mmu.TIMER = timer
+mmu.APU = apu
 
 timer.CPU = cpu
 timer.MMU = mmu
@@ -36,6 +41,8 @@ gpu.TIMER = timer
 gpu.KEY = key
 
 key.MMU = mmu
+
+apu.MMU = mmu
 # Reset everything
 cpu.reset()
 mmu.reset()
@@ -108,7 +115,14 @@ def frame():
             else:
                 CPU.T = 1
 
-        # Update GPU and timers
+        # Update APU, GPU and timers
+        apu.step(CPU.M)
+
+        if len(apu._samples) >= 1024:
+            samples = apu.get_samples()
+            audio.push(samples)
+            #audio.update()
+        
         gpu.checkline()
         timer.inc()
 

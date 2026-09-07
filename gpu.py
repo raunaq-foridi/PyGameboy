@@ -42,7 +42,8 @@ class GPU:
         self.MMU = None
 
         # Game Boy VRAM and OAM
-        self._vram = [0] * 0x2000
+        #self._vram = [0] * 0x2000
+        self._vram = np.zeros(0x2000, dtype=np.uint8)
         self._oam = [0] * 0xA0
 
         # LCD registers
@@ -50,10 +51,11 @@ class GPU:
 
         # Each tile is 8x8 pixels.
         # Pixel values are 0-3.
-        self._tilemap = [
+        '''self._tilemap = [
             [[0 for _ in range(8)] for _ in range(8)]
             for _ in range(512)
-        ]
+        ]'''
+        self._tilemap = np.zeros((512,8,8), dtype=np.uint8)
 
         # OAM objects
         self._objdata = []
@@ -69,10 +71,12 @@ class GPU:
 
         # Background colour index for each pixel of the
         # current scanline. Used for sprite priority.
-        self._scanrow = [0] * WIDTH
+        #self._scanrow = [0] * WIDTH
+        self._scanrow = np.zeros(WIDTH, dtype=np.uint8)
 
         # Framebuffer: WIDTH x HEIGHT x RGBA
-        self._scrn = [255] * (WIDTH * HEIGHT * 4)
+        #self._scrn = [255] * (WIDTH * HEIGHT * 4)
+        self._scrn = np.zeros(WIDTH * HEIGHT * 4, dtype=np.uint8)
 
         # PPU state
         self._curline = 0
@@ -111,15 +115,18 @@ class GPU:
     # ------------------------------------------------------------------
 
     def reset(self):
-        self._vram = [0] * 0x2000
+        #self._vram = [0] * 0x2000
+        self._vram = np.zeros(0x2000, dtype=np.uint8)
         self._oam = [0] * 0xA0
 
-        self._tilemap = [
+        '''self._tilemap = [
             [[0 for _ in range(8)] for _ in range(8)]
             for _ in range(512)
-        ]
+        ]'''
+        self._tilemap = np.zeros((512,8,8), dtype=np.uint8)
 
-        self._scanrow = [0] * WIDTH
+        #self._scanrow = [0] * WIDTH
+        self._scanrow = np.zeros(WIDTH, dtype=np.uint8)
 
         self._objdata = []
 
@@ -144,7 +151,9 @@ class GPU:
         }
 
         # Framebuffer starts white.
-        self._scrn = [255] * (WIDTH * HEIGHT * 4)
+        #self._scrn = [255] * (WIDTH * HEIGHT * 4)
+        #Framebuffer now starts black.
+        self._scrn = np.zeros(WIDTH * HEIGHT * 4, dtype=np.uint8)
 
         self._curline = 0
         self._curscan = 0
@@ -158,14 +167,14 @@ class GPU:
         #self._tile_cache = {}
         
         print("GPU Reset")
-        self._scrn = [0] * (WIDTH * HEIGHT * 4)
+        #self._scrn = [0] * (WIDTH * HEIGHT * 4)
 
-        for i in range(WIDTH * HEIGHT):
+        '''for i in range(WIDTH * HEIGHT):
             self._scrn[i * 4 + 0] = 255  # R
             self._scrn[i * 4 + 1] = 0    # G
             self._scrn[i * 4 + 2] = 0    # B
             self._scrn[i * 4 + 3] = 255  # A
-        print("GPU Redset")
+        print("GPU Redset")'''
 
     # ------------------------------------------------------------------
     # PPU timing
@@ -607,15 +616,16 @@ class GPU:
         self._tile_cache[cache_key] = tile
         return tile'''
         if self._bgtilebase == 0x0800 and tile_number<128:
-            tile_number+=256
+            tile_number= int(tile_number)+256
         return self._tilemap[tile_number]
+
 
 
     # ------------------------------------------------------------------
     # Background rendering
     # ------------------------------------------------------------------
 
-    def _render_background(self):
+    def _render_background_old(self):
         """
         Render the background for the current scanline.
 
@@ -696,6 +706,198 @@ class GPU:
 
             self._scanrow[screen_x] = colour_index
 
+    def _render_background_mid(self):
+        """
+        Render the background for the current scanline.
+
+        Game Boy background is a 256x256 pixel tile map.
+        SCX/SCY select which portion is visible.
+        """
+
+        screen_y = self._curline
+        scanrow = self._scanrow
+        scrn = self._scrn
+
+        # Background disabled.
+        if not self._bgon:
+            colour = self._palette['bg'][0]
+
+            offset = screen_y * WIDTH * 4
+
+            for x in range(WIDTH):
+                scrn[offset] = colour
+                scrn[offset + 1] = colour
+                scrn[offset + 2] = colour
+                scrn[offset + 3] = 255
+
+                offset += 4
+                scanrow[x] = 0
+
+            return
+
+        # ------------------------------------------------------------
+        # Determine the background row.
+        # ------------------------------------------------------------
+
+        bg_y = (screen_y + self._yscrl) & 0xFF
+
+        tile_y = bg_y >> 3
+        pixel_y = bg_y & 7
+
+        # Start position inside the 256-pixel background.
+        bg_x = self._xscrl & 0xFF
+
+        tile_x = bg_x >> 3
+        pixel_x = bg_x & 7
+
+        map_row = self._bgmapbase + tile_y * 32
+
+        palette = self._palette['bg']
+        tilemap = self._tilemap
+        vram = self._vram
+
+        offset = screen_y * WIDTH * 4
+        screen_x = 0
+
+        # ------------------------------------------------------------
+        # Render one tile at a time.
+        # ------------------------------------------------------------
+
+        while screen_x < WIDTH:
+
+            map_index = (map_row + tile_x) & 0x1FFF
+            tile_number = int(vram[map_index])
+
+            # 0x8800 addressing mode.
+            if self._bgtilebase == 0x0800 and tile_number < 128:
+                tile_number += 256
+
+            tile_row = tilemap[tile_number][pixel_y]
+
+            # Number of pixels available in this tile.
+            count = min(8 - pixel_x, WIDTH - screen_x)
+
+            for i in range(count):
+
+                colour_index = tile_row[pixel_x + i]
+                colour = palette[colour_index]
+
+                scrn[offset] = colour
+                scrn[offset + 1] = colour
+                scrn[offset + 2] = colour
+                scrn[offset + 3] = 255
+
+                scanrow[screen_x] = colour_index
+
+                offset += 4
+                screen_x += 1
+
+            # Move to next tile.
+            tile_x = (tile_x + 1) & 31
+            pixel_x = 0
+
+    def _render_background(self):
+        screen_y = self._curline
+
+        scanrow = self._scanrow
+        scrn = self._scrn
+        vram = self._vram
+        tilemap = self._tilemap
+
+        palette = np.asarray(self._palette['bg'], dtype=np.uint8)
+
+        # ------------------------------------------------------------
+        # Background disabled
+        # ------------------------------------------------------------
+
+        if not self._bgon:
+            colour = palette[0]
+
+            row = scrn[
+                screen_y * WIDTH * 4:
+                (screen_y + 1) * WIDTH * 4
+            ].reshape(WIDTH, 4)
+
+            row[:, 0] = colour
+            row[:, 1] = colour
+            row[:, 2] = colour
+            row[:, 3] = 255
+
+            scanrow[:] = 0
+
+            return
+
+        # ------------------------------------------------------------
+        # Determine background row
+        # ------------------------------------------------------------
+
+        bg_y = (screen_y + self._yscrl) & 0xFF
+
+        tile_y = bg_y >> 3
+        pixel_y = bg_y & 7
+
+        bg_x = self._xscrl & 0xFF
+
+        tile_x = bg_x >> 3
+        pixel_x = bg_x & 7
+
+        map_row = self._bgmapbase + tile_y * 32
+
+        # ------------------------------------------------------------
+        # Determine which tiles are visible.
+        #
+        # 160 pixels can span at most 21 tiles.
+        # ------------------------------------------------------------
+
+        tile_xs = (tile_x + np.arange(21)) & 31
+
+        map_indices = (map_row + tile_xs) & 0x1FFF
+
+        tile_numbers = vram[map_indices].astype(np.int16)
+
+        # 0x8800 addressing mode
+        if self._bgtilebase == 0x0800:
+            tile_numbers = np.where(
+                tile_numbers < 128,
+                tile_numbers + 256,
+                tile_numbers
+            )
+
+        # ------------------------------------------------------------
+        # Extract the requested row from every tile.
+        # ------------------------------------------------------------
+
+        pixels = tilemap[tile_numbers, pixel_y, :]
+
+        # 21 tiles × 8 pixels
+        pixels = pixels.reshape(-1)
+
+        # Account for horizontal scroll within first tile.
+        pixels = pixels[pixel_x:pixel_x + WIDTH]
+
+        # ------------------------------------------------------------
+        # Palette lookup
+        # ------------------------------------------------------------
+
+        colours = palette[pixels]
+
+        # Preserve colour indices for sprites.
+        scanrow[:] = pixels
+
+        # ------------------------------------------------------------
+        # Write entire scanline at once
+        # ------------------------------------------------------------
+
+        row = scrn[
+            screen_y * WIDTH * 4:
+            (screen_y + 1) * WIDTH * 4
+        ].reshape(WIDTH, 4)
+
+        row[:, 0] = colours
+        row[:, 1] = colours
+        row[:, 2] = colours
+        row[:, 3] = 255
+
     # ------------------------------------------------------------------
     # Window rendering
     # ------------------------------------------------------------------
@@ -734,7 +936,7 @@ class GPU:
 
             map_index = (self._wintilebase + tile_y*32 + tile_x)
 
-            tile_number = self._vram[map_index & 0x1FFF]
+            tile_number = int(self._vram[map_index & 0x1FFF])
             tile = self._get_tile(tile_number)
 
             colour_index = tile[pixel_y][pixel_x]
@@ -789,7 +991,7 @@ class GPU:
             if obj['yflip']:
                 line = height - 1 - line
 
-            tile_number = obj['tile']
+            tile_number = int(obj['tile'])
 
             if self._objsize:
                 # 8x16 sprites use two consecutive tiles.
@@ -898,7 +1100,8 @@ class GPU:
             return
 
         # Reset background information.
-        self._scanrow = [0] * WIDTH
+        #self._scanrow = [0] * WIDTH
+        self._scanrow = np.zeros(WIDTH, dtype=np.uint8)
 
         # Background first.
         self._render_background()
@@ -971,8 +1174,9 @@ class GPU:
 
     def render_screen(self):
     # Convert our RGBA screen buffer into a NumPy array
-        arr = np.array(self._scrn, dtype=np.uint8)
-        arr = arr.reshape((HEIGHT, WIDTH, 4))
+        #arr = np.array(self._scrn, dtype=np.uint8)
+        #arr = arr.reshape((HEIGHT, WIDTH, 4))
+        arr = self._scrn.reshape((HEIGHT,WIDTH,4))
 
         # Pygame's surfarray uses (WIDTH, HEIGHT, RGB)
         arr = np.transpose(arr[:, :, :3], (1, 0, 2))
