@@ -118,10 +118,10 @@ def frame():
         # Update APU, GPU and timers
         apu.step(CPU.M)
 
-        if len(apu._samples) >= 1024:
+        if len(apu._samples) >= 128:
             samples = apu.get_samples()
             audio.push(samples)
-            #audio.update()
+            audio.update()
         
         gpu.checkline()
         timer.inc()

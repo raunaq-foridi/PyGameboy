@@ -335,7 +335,7 @@ class AudioOutput:
 
         return pygame.sndarray.make_sound(pcm)
     
-    def _play(self):
+    def _play_old(self):
         #If already playing, don't replace.
         if self._channel is not None and self._channel.get_busy():
             return
@@ -362,12 +362,41 @@ class AudioOutput:
         #self._sound.play()
         self._channel = self._sound.play()
 
+    def _play(self):
 
+        if len(self._queue) < self.CHUNK_SIZE:
+            return
+
+        if self._channel is None:
+            self._channel = pygame.mixer.find_channel()
+
+            if self._channel is None:
+                return
+
+        if not self._channel.get_busy():
+            samples = self._queue[:self.CHUNK_SIZE]
+            self._queue = self._queue[self.CHUNK_SIZE:]
+
+            sound = self._make_sound(samples)
+            self._sounds.append(sound)
+            self._channel.play(sound)
+
+            return
+
+        #if something IS playing, queue the next chunk
+        if self._channel.get_queue() is None:
+            samples = self._queue[:self.CHUNK_SIZE]
+            self._queue= self._queue[self.CHUNK_SIZE:]
+
+            sound = self._make_sound(samples)
+
+            self._sounds.append(sound)
+            self._channel.queue(sound)
             
     def update(self):
         self._play()
 
-        '''#cull dead queue
+        #cull dead queue
         if self._channel is not None:
             queued = self._channel.get_queue()
 
@@ -375,7 +404,7 @@ class AudioOutput:
                 if not self._channel.get_busy():
                     self._sounds.clear()
                 elif self._sounds:
-                    self._sounds = self._sounds[-1:]'''
+                    self._sounds = self._sounds[-1:]
 
     def close(self):
         pygame.mixer.quit()
