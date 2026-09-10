@@ -312,8 +312,8 @@ class MMU:
                         else:
                             return 0
                     elif top_nibble in (0x10, 0x20, 0x30):
-                        #Audio - for now, only channel 1 and 2, no sweep
-                        if 0x11<=(addr&0xFF)<=0x26:
+                        #Audio - for now, only channel 1 and 2
+                        if 0x10<=(addr&0xFF)<=0x3F:
                             return self.APU.rb(addr)
                         return 0
                     elif top_nibble in (0x40, 0x50, 0x60, 0x70):
@@ -513,7 +513,7 @@ class MMU:
                             self._if = val
                     elif hi_nibble in (0x10, 0x20, 0x30):
                         #Audio regs DEBUG
-                        if 0x11<=(addr&0xFF)<=0x26:
+                        if 0x10<=(addr&0xFF)<=0x3F:
                             self.APU.wb(addr, val)
                         #pass
                     elif hi_nibble in (0x40, 0x50, 0x60, 0x70):
