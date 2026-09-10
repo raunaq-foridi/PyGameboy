@@ -63,15 +63,17 @@ mmu.load("pkmn_red.gb")
 
 mmu.load_ram()
 #Functions
+
+#DEBUG: Skip M cycles when HALTed. return to 1 for default behaviour
+HALT_BATCH = 16
 def frame():
 
     fclock = CPU._clock + 17556
-    #brk = document.getElementById('breakpoint').value  # Keep as string, parse later
-    #t0 = datetime.datetime.now()
-
+    
     while CPU._clock < fclock:
         if CPU._halt:
-            CPU.M = 1
+            #CPU.M = 1
+            CPU.M = min(HALT_BATCH, fclock - CPU._clock)
             CPU._clock += CPU.M
             #if any interupt becomes nonzero, wake the CPU up from HALT
             if mmu._ie & mmu._if:
@@ -116,6 +118,7 @@ def frame():
                 CPU.T = 1
 
         # Update APU, GPU and timers
+        timer.inc()
         apu.step(CPU.M)
 
         if len(apu._samples) >= 128:
@@ -124,15 +127,12 @@ def frame():
             audio.update()
         
         gpu.checkline()
-        timer.inc()
+        
 
         # Breakpoint or stop
         if CPU._stop:
             break 
 
-    #t1 = datetime.datetime.now()
-    #elapsed_ms = (t1 - t0).total_seconds() * 1000
-    #fps = round(10000 / elapsed_ms, 1)
 
 
 
@@ -143,7 +143,10 @@ CPU.PC=0x100
 print("Reading memory address: ",CPU.PC)
 print("Which should be instruction: ", hex(mmu.rb(CPU.PC)))
 autosave_counter = 0
+
+GB_FPS = 4194304/ 70224
 import pygame
+clock = pygame.time.Clock()
 while running:
    
     
@@ -162,6 +165,8 @@ while running:
     if autosave_counter >= 600:
         mmu.save_ram()
         autosave_counter = 0
+
+    clock.tick(GB_FPS)
     '''CPU._map[mmu.rb(CPU.PC)]()
     CPU.PC = (CPU.PC + 1) & 0xFFFF
     CPU._clock += CPU.M'''

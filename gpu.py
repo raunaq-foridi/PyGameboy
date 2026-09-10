@@ -60,7 +60,7 @@ class GPU:
         # OAM objects
         self._objdata = []
         self._objdatasorted = []
-
+        self._oam_dirty = True  #Only sort when about to use
         # Game Boy palettes.
         # Values are actual RGB grayscale values.
         self._palette = {
@@ -69,6 +69,9 @@ class GPU:
             'obj1': [255, 255, 255, 255],
         }
 
+        self._palette_np = {'bg':np.array([255, 255, 255, 255], dtype=np.uint8),}
+
+        self._ARANGE_21 = np.arange(21) #Used frequently. Better pre-saved
         # Background colour index for each pixel of the
         # current scanline. Used for sprite priority.
         #self._scanrow = [0] * WIDTH
@@ -143,13 +146,15 @@ class GPU:
             })
 
         self._objdatasorted = list(self._objdata)
+        self._oam_dirty = True
 
         self._palette = {
             'bg':  [255, 255, 255, 255],
-            'obj0': [255, 255, 255, 255, 255],
+            'obj0': [255, 255, 255, 255],
             'obj1': [255, 255, 255, 255],
         }
 
+        self._palette_np = {'bg':np.array([255, 255, 255, 255], dtype=np.uint8),}
         # Framebuffer starts white.
         #self._scrn = [255] * (WIDTH * HEIGHT * 4)
         #Framebuffer now starts black.
@@ -363,10 +368,22 @@ class GPU:
 
         # Hardware prioritises lower X coordinates, and then lower
         # OAM index when X coordinates are equal.
+        '''self._objdatasorted = sorted(
+            self._objdata,
+            key=lambda o: (o['x'], o['num'])
+        )'''
+        #Only sort before use; instead just mark as dirty
+        self._oam_dirty=True
+
+    def _ensure_oam_sorted(self):
+        if not self._oam_dirty:
+            return
         self._objdatasorted = sorted(
             self._objdata,
             key=lambda o: (o['x'], o['num'])
         )
+        self._oam_dirty = False
+        
 
     # ------------------------------------------------------------------
     # Register reads
@@ -508,6 +525,7 @@ class GPU:
                 self._palette['bg'],
                 val
             )
+            self._palette_np["bg"][:] = self._palette["bg"]
 
         # OBP0
         elif gaddr == 8:
@@ -804,7 +822,7 @@ class GPU:
         vram = self._vram
         tilemap = self._tilemap
 
-        palette = np.asarray(self._palette['bg'], dtype=np.uint8)
+        palette = self._palette_np['bg']
 
         # ------------------------------------------------------------
         # Background disabled
@@ -849,7 +867,7 @@ class GPU:
         # 160 pixels can span at most 21 tiles.
         # ------------------------------------------------------------
 
-        tile_xs = (tile_x + np.arange(21)) & 31
+        tile_xs = (tile_x + self._ARANGE_21) & 31
 
         map_indices = (map_row + tile_xs) & 0x1FFF
 
@@ -902,7 +920,7 @@ class GPU:
     # Window rendering
     # ------------------------------------------------------------------
 
-    def _render_window(self):
+    def _render_window_old(self):
         """
         Render the window for the current scanline
         Fixed 160x144 overlay, with position controlled by WY/WX, not SCX/SCY
@@ -952,7 +970,84 @@ class GPU:
             self._scanrow[screen_x] = colour_index
 
         self._winline+=1
-    
+        
+    def _render_window(self):
+        """
+        Render the window for the current scanline.
+        Fixed 160x144 overlay, with position controlled by WY/WX,
+        not SCX/SCY.
+        """
+
+        if not self._winon or not self._bgon:
+            return
+
+        screen_y = self._curline
+
+        #Ignor if too high vertically
+        if screen_y < self._winy:
+            return
+
+        win_y = self._winline & 0xFF
+
+        tile_y = win_y >> 3
+        pixel_y = win_y & 7
+
+        window_x = self._winx - 7
+
+        #Determine visible screen range
+        start_x = max(0, window_x)
+        end_x = min(WIDTH, window_x + 257)
+
+        if start_x >= end_x:
+            self._winline += 1
+            return
+
+        #Window coords
+        first_pixel = start_x - window_x
+        last_pixel = end_x - window_x
+
+        first_tile_x = first_pixel >> 3
+        last_tile_x = (last_pixel - 1) >> 3
+
+        tile_xs = np.arange(first_tile_x, last_tile_x + 1)
+
+        # Get tile numbers
+        map_row = self._wintilebase + tile_y * 32
+        map_indices = (map_row + tile_xs) & 0x1FFF
+        tile_numbers = self._vram[map_indices].astype(np.int16)
+
+        # 0x8800 addressing mode.
+        if self._bgtilebase == 0x0800:
+            tile_numbers = np.where(
+                tile_numbers < 128,
+                tile_numbers + 256,
+                tile_numbers
+            )
+
+        pixels = self._tilemap[tile_numbers,pixel_y,:].reshape(-1)
+
+        # Remove pixels before/after the visible region
+        first_offset = first_pixel & 7
+
+        pixels = pixels[first_offset: first_offset + (end_x - start_x)]
+        palette = self._palette_np['bg']
+        colours = palette[pixels]
+
+        self._scanrow[start_x:end_x] = pixels
+
+        #Numpy optimised now; write row by row
+        row = self._scrn[
+            screen_y * WIDTH * 4:
+            (screen_y + 1) * WIDTH * 4
+        ].reshape(WIDTH, 4)
+
+        row[start_x:end_x, 0] = colours
+        row[start_x:end_x, 1] = colours
+        row[start_x:end_x, 2] = colours
+        row[start_x:end_x, 3] = 255
+
+        self._winline += 1
+
     # ------------------------------------------------------------------
     # Sprite rendering
     # ------------------------------------------------------------------
@@ -964,12 +1059,11 @@ class GPU:
         Maximum of 10 sprites per scanline on original Game Boy hardware.
         """
 
+        self._ensure_oam_sorted()  #Actually sorts now, right before use
+
         screen_y = self._curline
-
         height = 16 if self._objsize else 8
-
         count = 0
-
         for obj in self._objdatasorted:
 
             # Is the sprite on this scanline?
